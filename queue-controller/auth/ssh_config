@@ -1,0 +1,5 @@
+Host CloudCourse_VM_Group_8
+  HostName 54.229.65.95
+  User ubuntu
+  Port 22
+  IdentityFile ~/.ssh/ssh_key_8

@@ -1,0 +1,75 @@
+# CURL.EXE GEBRUIKEN IPV CURL
+
+Invoke-WebRequest -Uri "http://localhost:3003/temperature/out-of-range?experiment-id=9ee55bd4-a531-409c-9a64-0398353cadc5" -Method GET
+
+#Create experiments
+
+Invoke-WebRequest -Uri "http://localhost:3003/experiments" `
+    -Method Post `
+    -ContentType "application/json" `
+    -Body '{
+        "experiment": "9ee55bd4-a531-409c-9a64-0398353cadc5",
+        "researcher": "d.landau@uu.nl",
+        "sensors": [
+            "66cc5dc0-d75a-40ee-88d5-0308017191af",
+            "ac5e0ea2-a04d-4eb3-a6e3-206d47ffe9e1"
+        ],
+        "temperature_range": {
+            "upper_threshold": 26.0,
+            "lower_threshold": 25.0
+        }
+    }'
+
+
+# Post measurement naar database
+Invoke-WebRequest -Uri "http://localhost:3003/experiments/9ee55bd4-a531-409c-9a64-0398353cadc5/measurements" `
+    -Method Post `
+    -ContentType "application/json" `
+    -Body '{
+        "measurement_id": "fb5b8af2-9309-46c8-bcbe-87c98b407c3d",       
+        "timestamp": 1691419390.9467194,
+        "temperature": 25.5
+    }'
+
+
+# Post out of range measurement naar database
+
+Invoke-WebRequest -Uri "http://localhost:3003/experiments/9ee55bd4-a531-409c-9a64-0398353cadc5/measurements" `
+    -Method Post `
+    -ContentType "application/json" `
+    -Body '{
+        "measurement_id": "fb5b8af2-9309-46c8-bcbe-87c38b508c3d",       
+        "timestamp": 1691478490.9467194,
+        "temperature": 28.5
+    }'
+
+
+# Get out of range temperature en tijden
+
+curl.exe -X GET "http://localhost:3003/temperature/out-of-range?experiment-id=9ee55bd4-a531-409c-9a64-0398353cadc5" -H "Content-Type: application/json"
+
+
+
+
+Invoke-WebRequest -Uri "http://localhost:3003/check?experiment-id=9ee55bd4-a531-409c-9a64-0398353cadc5" `
+    -Method GET
+  
+
+
+
+Invoke-WebRequest -Uri "http://localhost:3003/temperature?experiment-id=9ee55bd4-a531-409c-9a64-0398353cadc5&start-time=1691419390.000000&end-time=1691419395.000000" `
+    -Method GET 
+
+
+
+
+Invoke-WebRequest -Uri "http://localhost:3003/hello" -Method GET
+
+
+
+# Example requests uit assignment maar dan aangepast zodat pycharm powershell het in 1 keer plakt
+
+curl.exe -X GET "http://localhost:3003/temperature/out-of-range" -G -d "experiment-id=9ee55bd4-a531-409c-9a64-0398353cadc5"
+
+
+curl.exe -X GET "http://localhost:3003/temperature" -G -d "experiment-id=9ee55bd4-a531-409c-9a64-0398353cadc5" -d "start-time=1691419390.000000"  -d "end-time=1691419395.000000"
