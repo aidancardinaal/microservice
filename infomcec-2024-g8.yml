@@ -1,0 +1,210 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notifications-service
+  labels:
+    app: notifications-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notifications-service
+  template:
+    metadata:
+      labels:
+        app: notifications-service
+    spec:
+      containers:
+        - name: notifications-service
+          image: dclandau/cec-notifications-service:latest
+          args: ["--external-ip", "localhost", "--secret-key", "QJUHsPhnA0eiqHuJqsPgzhDozYO4f1zh"]
+          ports:
+          - containerPort: 3000
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notifications-service
+spec:
+  type: NodePort
+  selector:
+    app: notifications-service
+  ports:
+    - port: 4000
+      targetPort: 3000
+      nodePort: 30674
+
+---
+kind: Pod
+apiVersion: v1
+metadata:
+  name: queue-controller
+spec:
+  initContainers:
+    - name: wait-for-postgres-db
+      image: busybox
+      command: [ 'sh', '-c', 'until nc -z rabbitmq-service 5672; do echo waiting for rabbitmq-service; sleep 1; done' ]
+  containers:
+    - name: queue-controller
+      image: queue-controller:latest
+      imagePullPolicy: Never
+
+---
+kind: Pod
+apiVersion: v1
+metadata:
+  name: rabbitmq
+  labels:
+    app: rabbitmq
+spec:
+  containers:
+    - name: rabbitmq
+      image: rabbitmq:3-management-alpine
+      ports:
+        - containerPort: 5672
+        - containerPort: 15672
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq-service
+spec:
+  type: ClusterIP
+  selector:
+    app: rabbitmq
+  ports:
+    - name: queue
+      port: 5672
+      targetPort: 5672
+
+---
+kind: Pod
+apiVersion: v1
+metadata:
+  name: rest-api
+  labels:
+    app: rest-api
+spec:
+  initContainers:
+    - name: wait-for-postgres-db
+      image: busybox
+      command: [ 'sh', '-c', 'until nc -z postgres-db-service 5432; do echo waiting for postgres-db; sleep 1; done' ]
+  containers:
+    - name: rest-api
+      image: rest-api:latest
+      imagePullPolicy: Never
+      ports:
+        - containerPort: 80
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rest-api-service
+spec:
+  type: NodePort
+  selector:
+    app: rest-api
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30003
+
+---
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  name: postgres-pv-volume  # Sets PV's name
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 1Gi # Sets PV Volume
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/data/db"
+
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: postgres-pv-claim  # Sets name of PVC
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce  # Sets read and write access
+  resources:
+    requests:
+      storage: 1Gi  # Sets volume sizeapiVersion: v1
+
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: postgres-config
+  labels:
+    app: postgres
+data:
+  POSTGRES_DB: postgresdb
+  POSTGRES_USER: group8
+  POSTGRES_PASSWORD: psltest
+  db-init: |
+    CREATE TABLE IF NOT EXISTS experiments (experiment_id UUID PRIMARY KEY,researcher VARCHAR(255),sensors VARCHAR[] NOT NULL,lower_threshold FLOAT,upper_threshold FLOAT);
+    CREATE TABLE IF NOT EXISTS measurements (measurement_id UUID PRIMARY KEY, experiment_id UUID REFERENCES experiments (experiment_id), temperature FLOAT NOT NULL, timestamp DOUBLE PRECISION NOT NULL);
+
+---
+kind: Pod
+apiVersion: v1
+metadata:
+  name: postgres-db
+  labels: 
+    app: postgres-db
+spec:
+  containers:
+    - name: postgres
+      image: postgres:10.1 # Sets Image
+      imagePullPolicy: "IfNotPresent"
+      lifecycle:
+        postStart:
+          exec:
+            command: ["/bin/bash", "-c", "sleep 10; psql -U $POSTGRES_USER -d $POSTGRES_DB -a -f /home/db-init.sql"]
+        # preStop: 
+        #   exec: 
+        #     command: ["rm", "-r", "/var/lib/postgresql/data"]
+      ports:
+        - containerPort: 5432  # Exposes container port
+      envFrom:
+        - configMapRef:
+            name: postgres-config
+      volumeMounts:
+        - mountPath: /var/lib/postgresql/data
+          name: postgredb
+        - name: config-vol
+          mountPath: /home
+  volumes:
+    - name: postgredb
+      persistentVolumeClaim:
+        claimName: postgres-pv-claim
+    - name: config-vol
+      configMap:
+        name: postgres-config
+        items:
+          - key: db-init
+            path: db-init.sql
+  restartPolicy: Always
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-db-service
+spec:
+  type: NodePort
+  selector:
+    app: postgres-db
+  ports:
+    - port: 5432
+      targetPort: 5432
+      nodePort: 30432
